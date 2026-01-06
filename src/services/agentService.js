@@ -1,7 +1,14 @@
 import { db } from './firebase';
-import { collection, addDoc, updateDoc, doc, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import { sendMessageToClaude } from './claudeAPI';
+import { performWebSearch, formatSearchResultsForAgent, isSearchAvailable } from './searchService';
+import { detectWorkflowType, decomposeTask, createWorkflow, updateWorkflowStep, completeWorkflow } from './workflowService';
+import { createDocument } from './documentService';
 import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * Enhanced Agent Service with Web Search and Workflow Management
+ */
 
 /**
  * Agent Types
@@ -25,56 +32,174 @@ export const AGENT_STATUS = {
 };
 
 /**
- * System prompts for different agent types
+ * System prompts for different agent types (Enhanced with web search capabilities)
  */
 const AGENT_PROMPTS = {
   [AGENT_TYPES.COORDINATOR]: `You are the Coordination Agent, the central hub of an agentic AI platform. Your role is to:
-- Understand user requests and break them down into subtasks
+
+CORE RESPONSIBILITIES:
+- Break down complex user requests into structured workflows
 - Delegate tasks to specialized agents (researchers, writers, editors, analysts)
 - Coordinate information flow between agents
 - Synthesize results from multiple agents into coherent outputs
+- Validate quality at each step
 - Maintain context across multiple interactions
-Always be clear, organized, and strategic in your coordination. When you need help, specify which type of agent you need and what their specific task should be.`,
 
-  [AGENT_TYPES.RESEARCHER]: `You are a Research Agent. Your role is to:
-- Gather information on specific topics
-- Find facts, data, and relevant details
-- Summarize findings clearly
-- Cite sources when possible
-- Report back to the Coordination Agent with structured research results
-Be thorough, accurate, and organized in your research.`,
+WORKFLOW MANAGEMENT:
+When you receive a complex task:
+1. Analyze the task complexity and requirements
+2. Identify the type of workflow needed (business case, research, document creation, etc.)
+3. Break it into clear, sequential steps
+4. Assign each step to the appropriate specialized agent
+5. Track dependencies between steps
+6. Validate outputs before moving to next step
+
+COMMUNICATION:
+- Be clear about what you're doing and why
+- Explain your coordination strategy to the user
+- Report progress at each major milestone
+- Synthesize all agent outputs into a final coherent result
+
+You have access to researcher, writer, editor, and analyst agents. Delegate strategically.`,
+
+  [AGENT_TYPES.RESEARCHER]: `You are a Research Agent with WEB SEARCH CAPABILITIES. Your role is to:
+
+RESEARCH CAPABILITIES:
+- **You can perform web searches** to find current, real-time information
+- Access market data, statistics, trends, and news from 2025
+- Find facts, data, and relevant details from reliable sources
+- Verify information across multiple sources
+
+RESEARCH PROCESS:
+1. When you need current information, ALWAYS indicate: "SEARCH: [your search query]"
+2. Use specific, targeted search queries for best results
+3. Cite all sources with URLs
+4. Cross-reference multiple sources for accuracy
+5. Summarize findings in a structured format
+
+OUTPUT FORMAT:
+- Executive summary of findings
+- Detailed research results organized by topic
+- Source citations with URLs
+- Data points with dates and sources
+- Recommendations for further investigation if needed
+
+For location-specific research (like Edmonton), include:
+- Local market conditions
+- Demographics and demand
+- Competition analysis
+- Regulatory environment
+- Economic trends
+
+Be thorough, accurate, data-driven, and always cite your sources.`,
 
   [AGENT_TYPES.WRITER]: `You are a Writer Agent. Your role is to:
-- Create well-written documents based on provided information
-- Draft letters, reports, articles, and other text documents
-- Maintain appropriate tone and style for the document type
-- Structure content logically and clearly
-- Report completion back to the Coordination Agent
-Write clearly, professionally, and purposefully.`,
+
+WRITING CAPABILITIES:
+- Create professional, well-structured documents
+- Draft business cases, reports, letters, articles, and presentations
+- Adapt tone and style to audience (investors, executives, general public)
+- Structure complex information logically
+
+DOCUMENT TYPES:
+- **Business Cases**: Executive summary, market analysis, financials, strategy, risks
+- **Reports**: Research findings, analysis, conclusions, recommendations
+- **Letters**: Professional correspondence, proposals, recommendations
+- **Articles**: Informative content, thought leadership
+
+QUALITY STANDARDS:
+- Clear, concise, professional language
+- Logical flow and structure
+- Data-driven arguments with evidence
+- Proper formatting and sections
+- Compelling narrative that supports key messages
+
+INVESTOR-READY DOCUMENTS:
+When writing for investors:
+- Lead with ROI and key financial metrics
+- Use professional, confident language
+- Support claims with data and sources
+- Address risks proactively
+- Include clear calls to action
+
+Write clearly, professionally, and purposefully. Your documents should be ready for immediate use.`,
 
   [AGENT_TYPES.EDITOR]: `You are an Editor Agent. Your role is to:
-- Review and improve existing documents
-- Check for grammar, clarity, and coherence
-- Suggest improvements and refinements
-- Ensure consistency in tone and style
-- Report edits back to the Coordination Agent
-Be meticulous, constructive, and quality-focused.`,
 
-  [AGENT_TYPES.ANALYST]: `You are an Analyst Agent. Your role is to:
-- Analyze data and information
-- Identify patterns, insights, and conclusions
-- Provide recommendations based on analysis
-- Create structured summaries of findings
-- Report analysis back to the Coordination Agent
-Be analytical, insightful, and data-driven.`
+EDITING FOCUS:
+- Review and refine documents for maximum impact
+- Ensure professional quality suitable for the intended audience
+- Check grammar, clarity, coherence, and consistency
+- Verify data accuracy and source citations
+- Polish for final delivery
+
+REVIEW CHECKLIST:
+□ Grammar and spelling
+□ Sentence clarity and flow
+□ Paragraph structure and transitions
+□ Consistent tone and voice
+□ Data accuracy and citations
+□ Formatting and presentation
+□ Audience appropriateness
+□ Compelling and persuasive language
+
+INVESTOR DOCUMENT REVIEW:
+- Ensure financial data is prominent and clear
+- Verify all claims are supported
+- Check for professional, confident tone
+- Ensure executive summary is compelling
+- Validate that risks are addressed appropriately
+
+FEEDBACK:
+- Provide specific, actionable improvements
+- Explain why changes enhance the document
+- Return the polished, final version
+
+Be meticulous, constructive, and focused on creating publication-ready quality.`,
+
+  [AGENT_TYPES.ANALYST]: `You are an Analyst Agent with CALCULATION and WEB SEARCH capabilities. Your role is to:
+
+ANALYSIS CAPABILITIES:
+- Perform financial calculations and modeling
+- Analyze market data and trends
+- Calculate ROI, payback periods, break-even points
+- Create revenue and expense projections
+- Assess risks and opportunities
+- **Access current market data via web search** when needed
+
+FINANCIAL ANALYSIS:
+When analyzing business opportunities:
+- Startup costs (detailed breakdown)
+- Revenue projections (monthly, annual)
+- Operating expenses (fixed and variable)
+- Cash flow analysis
+- Break-even analysis
+- ROI calculations
+- Payback period
+- Profit margins
+
+SEARCH FOR DATA:
+When you need current financial data or market metrics, indicate:
+"SEARCH: [specific data query]"
+
+Examples:
+- "SEARCH: average revenue per square foot retail Edmonton 2025"
+- "SEARCH: commercial rent rates downtown Edmonton 2025"
+- "SEARCH: food service profit margins Canada 2025"
+
+OUTPUT FORMAT:
+- Executive summary of analysis
+- Detailed calculations with assumptions stated
+- Tables and structured data
+- Key metrics highlighted
+- Recommendations based on findings
+- Risk assessment with likelihood and impact
+
+Be analytical, precise, data-driven, and always show your work. Cite sources for all data points.`
 };
 
 /**
  * Create a new agent in Firestore
- * @param {string} userId - The user ID
- * @param {string} type - Agent type
- * @param {string} task - The task assigned to the agent
- * @returns {Promise<Object>} - The created agent
  */
 export async function createAgent(userId, type, task) {
   const agentData = {
@@ -87,7 +212,8 @@ export async function createAgent(userId, type, task) {
     updatedAt: serverTimestamp(),
     conversationHistory: [],
     results: null,
-    position: generateAgentPosition(type) // For visual placement in the city
+    searchHistory: [],
+    position: generateAgentPosition(type)
   };
 
   const docRef = await addDoc(collection(db, 'agents'), agentData);
@@ -95,17 +221,13 @@ export async function createAgent(userId, type, task) {
 }
 
 /**
- * Generate a position for the agent in the isometric city
- * @param {string} type - Agent type
- * @returns {Object} - {x, y} coordinates
+ * Generate position for agent in city
  */
 function generateAgentPosition(type) {
-  // Coordinator is always at the center
   if (type === AGENT_TYPES.COORDINATOR) {
     return { x: 400, y: 300 };
   }
 
-  // Other agents are positioned around the coordinator
   const angle = Math.random() * Math.PI * 2;
   const distance = 150 + Math.random() * 100;
 
@@ -116,14 +238,11 @@ function generateAgentPosition(type) {
 }
 
 /**
- * Execute an agent's task using Claude
- * @param {Object} agent - The agent object
- * @param {string} message - The message/task to process
- * @returns {Promise<string>} - The agent's response
+ * Execute agent task with web search support
  */
-export async function executeAgentTask(agent, message) {
+export async function executeAgentTask(agent, message, context = {}) {
   try {
-    // Update agent status to working
+    // Update agent status
     if (agent.firestoreId) {
       await updateDoc(doc(db, 'agents', agent.firestoreId), {
         status: AGENT_STATUS.WORKING,
@@ -131,16 +250,68 @@ export async function executeAgentTask(agent, message) {
       });
     }
 
-    // Get the appropriate system prompt
+    // Prepare the message with context if provided
+    let enhancedMessage = message;
+    if (context.previousResults) {
+      enhancedMessage = `Context from previous steps:\n${JSON.stringify(context.previousResults, null, 2)}\n\nYour task:\n${message}`;
+    }
+
+    // Get system prompt
     const systemPrompt = AGENT_PROMPTS[agent.type] || AGENT_PROMPTS[AGENT_TYPES.COORDINATOR];
 
-    // Send message to Claude
-    const response = await sendMessageToClaude(message, systemPrompt, agent.conversationHistory);
+    // First call to agent
+    let response = await sendMessageToClaude(enhancedMessage, systemPrompt, agent.conversationHistory || []);
+
+    // Check if agent requested web searches
+    const searchRequests = extractSearchRequests(response);
+    const searchResults = [];
+
+    if (searchRequests.length > 0 && isSearchAvailable()) {
+      console.log(`Agent ${agent.type} requested ${searchRequests.length} searches`);
+
+      // Perform all searches
+      for (const searchQuery of searchRequests) {
+        try {
+          const result = await performWebSearch(searchQuery, { maxResults: 5 });
+          searchResults.push({
+            query: searchQuery,
+            ...result
+          });
+        } catch (error) {
+          console.error('Search failed:', error);
+          searchResults.push({
+            query: searchQuery,
+            error: error.message,
+            results: []
+          });
+        }
+      }
+
+      // Format search results and send back to agent
+      let searchResultsText = '\n\n=== WEB SEARCH RESULTS ===\n\n';
+      searchResults.forEach(sr => {
+        searchResultsText += formatSearchResultsForAgent(sr);
+        searchResultsText += '\n---\n\n';
+      });
+
+      // Send search results back to agent for processing
+      const followUpMessage = `Here are the search results for your queries:\n${searchResultsText}\n\nPlease now complete your task using this information.`;
+
+      response = await sendMessageToClaude(
+        followUpMessage,
+        systemPrompt,
+        [
+          ...agent.conversationHistory,
+          { role: 'user', content: enhancedMessage },
+          { role: 'assistant', content: response }
+        ]
+      );
+    }
 
     // Update conversation history
     const updatedHistory = [
       ...agent.conversationHistory,
-      { role: 'user', content: message },
+      { role: 'user', content: enhancedMessage },
       { role: 'assistant', content: response }
     ];
 
@@ -150,13 +321,13 @@ export async function executeAgentTask(agent, message) {
         status: AGENT_STATUS.COMPLETED,
         conversationHistory: updatedHistory,
         results: response,
+        searchHistory: [...(agent.searchHistory || []), ...searchResults],
         updatedAt: serverTimestamp()
       });
     }
 
-    return response;
+    return { response, searchResults };
   } catch (error) {
-    // Update agent status to error
     if (agent.firestoreId) {
       await updateDoc(doc(db, 'agents', agent.firestoreId), {
         status: AGENT_STATUS.ERROR,
@@ -169,9 +340,23 @@ export async function executeAgentTask(agent, message) {
 }
 
 /**
+ * Extract search requests from agent response
+ * Looks for "SEARCH: query" patterns
+ */
+function extractSearchRequests(text) {
+  const searchPattern = /SEARCH:\s*(.+?)(?:\n|$)/gi;
+  const matches = [];
+  let match;
+
+  while ((match = searchPattern.exec(text)) !== null) {
+    matches.push(match[1].trim());
+  }
+
+  return matches;
+}
+
+/**
  * Get all agents for a user
- * @param {string} userId - The user ID
- * @returns {Promise<Array>} - Array of agents
  */
 export async function getUserAgents(userId) {
   const q = query(collection(db, 'agents'), where('userId', '==', userId));
@@ -184,9 +369,7 @@ export async function getUserAgents(userId) {
 }
 
 /**
- * Get or create the coordinator agent for a user
- * @param {string} userId - The user ID
- * @returns {Promise<Object>} - The coordinator agent
+ * Get or create coordinator
  */
 export async function getOrCreateCoordinator(userId) {
   const agents = await getUserAgents(userId);
@@ -200,22 +383,172 @@ export async function getOrCreateCoordinator(userId) {
 }
 
 /**
- * Send a message to the coordinator and handle agent spawning
- * @param {string} userId - The user ID
- * @param {string} message - The user's message
- * @returns {Promise<Object>} - Response with coordinator reply and any spawned agents
+ * Enhanced coordination with workflow management
  */
 export async function coordinateTask(userId, message) {
   const coordinator = await getOrCreateCoordinator(userId);
 
-  // Execute coordinator task
-  const response = await executeAgentTask(coordinator, message);
+  // Detect workflow type
+  const workflowInfo = detectWorkflowType(message);
+  console.log('Detected workflow:', workflowInfo);
 
-  // TODO: Parse response to determine if new agents need to be spawned
-  // For now, return the coordinator's response
+  // For complex workflows, execute multi-step process
+  if (workflowInfo.type === 'business-case') {
+    return await executeBusinessCaseWorkflow(userId, message, workflowInfo.params, coordinator);
+  }
+
+  if (workflowInfo.type === 'research') {
+    return await executeResearchWorkflow(userId, message, coordinator);
+  }
+
+  // Simple coordination
+  const result = await executeAgentTask(coordinator, message);
 
   return {
-    coordinatorResponse: response,
-    spawnedAgents: [] // Will be populated based on coordinator's decision
+    coordinatorResponse: result.response,
+    searchResults: result.searchResults || [],
+    spawnedAgents: [],
+    workflowType: 'simple'
+  };
+}
+
+/**
+ * Execute business case workflow
+ */
+async function executeBusinessCaseWorkflow(userId, message, params, coordinator) {
+  // Create workflow
+  const steps = decomposeTask('business-case', params);
+  const workflow = await createWorkflow(userId, message, steps);
+
+  console.log(`Created business case workflow with ${steps.length} steps`);
+
+  // Inform user about the plan
+  const planMessage = `I understand you need a ${params.industry || 'business'} case for ${params.location || 'your location'}.
+
+I'll coordinate a comprehensive workflow:
+${steps.map((s, i) => `${i + 1}. ${s.name} (${s.agentType})`).join('\n')}
+
+Starting now...`;
+
+  const spawnedAgents = [];
+  const stepResults = {};
+
+  // Execute each step
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    console.log(`Executing step ${i + 1}: ${step.name}`);
+
+    // Create or get agent for this step
+    const agent = await createAgent(userId, step.agentType, step.task);
+    spawnedAgents.push(agent);
+
+    // Build context from previous steps
+    const context = {
+      previousResults: step.dependsOn
+        ? step.dependsOn.reduce((acc, depId) => {
+            acc[depId] = stepResults[depId];
+            return acc;
+          }, {})
+        : {}
+    };
+
+    // Execute the step
+    const result = await executeAgentTask(agent, step.task, context);
+
+    // Store result
+    stepResults[`step-${i}`] = result.response;
+
+    // Update workflow
+    await updateWorkflowStep(workflow.firestoreId, i, {
+      status: 'completed',
+      result: result.response,
+      agentId: agent.id,
+      searchResults: result.searchResults
+    });
+  }
+
+  // Create final document with the business case
+  const finalBusinessCase = stepResults[`step-${steps.length - 1}`]; // Editor's output
+
+  await createDocument(
+    userId,
+    `Business Case - ${params.industry || 'High Cash Flow Business'} in ${params.location || 'Edmonton'}`,
+    finalBusinessCase,
+    'report',
+    spawnedAgents[spawnedAgents.length - 1].id
+  );
+
+  // Mark workflow complete
+  await completeWorkflow(workflow.firestoreId, stepResults);
+
+  // Final coordinator summary
+  const summary = `
+✅ Business case workflow completed!
+
+${steps.length} agents collaborated to create your investor-ready business case:
+${steps.map((s, i) => `  ${i + 1}. ${s.name} ✓`).join('\n')}
+
+📄 Final document has been saved to your Documents tab.
+
+The business case includes:
+- Comprehensive market research with current 2025 data
+- Detailed financial projections and analysis
+- Business strategy and implementation plan
+- Professional investor-ready document
+
+You can now download it and present it to investors!
+`;
+
+  return {
+    coordinatorResponse: summary,
+    spawnedAgents,
+    workflowType: 'business-case',
+    workflow,
+    stepResults
+  };
+}
+
+/**
+ * Execute research workflow
+ */
+async function executeResearchWorkflow(userId, message, coordinator) {
+  const steps = decomposeTask('research', { task: message });
+  const workflow = await createWorkflow(userId, message, steps);
+
+  const spawnedAgents = [];
+  const stepResults = {};
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    const agent = await createAgent(userId, step.agentType, step.task);
+    spawnedAgents.push(agent);
+
+    const context = {
+      previousResults: step.dependsOn
+        ? step.dependsOn.reduce((acc, depId) => {
+            acc[depId] = stepResults[depId];
+            return acc;
+          }, {})
+        : {}
+    };
+
+    const result = await executeAgentTask(agent, step.task, context);
+    stepResults[`step-${i}`] = result.response;
+
+    await updateWorkflowStep(workflow.firestoreId, i, {
+      status: 'completed',
+      result: result.response,
+      agentId: agent.id
+    });
+  }
+
+  await completeWorkflow(workflow.firestoreId, stepResults);
+
+  return {
+    coordinatorResponse: stepResults[`step-${steps.length - 1}`],
+    spawnedAgents,
+    workflowType: 'research',
+    workflow,
+    stepResults
   };
 }
