@@ -66,13 +66,16 @@ exports.executeWorkflow = functions.firestore
 
         const agentRef = await db.collection('agents').add(agentData);
 
-        // Build context from previous steps
-        const context = step.dependsOn
-          ? step.dependsOn.reduce((acc, depId) => {
-              acc[depId] = stepResults[depId];
-              return acc;
-            }, {})
-          : {};
+        // Build context from previous steps and include files
+        const context = {
+          files: job.workflow.files || [], // Include files from workflow
+          previousResults: step.dependsOn
+            ? step.dependsOn.reduce((acc, depId) => {
+                acc[depId] = stepResults[depId];
+                return acc;
+              }, {})
+            : {}
+        };
 
         // Execute agent task
         try {
@@ -335,6 +338,38 @@ function formatSearchResults(searchResults) {
 }
 
 /**
+ * Format files for agent (Cloud Functions version)
+ */
+function formatFilesForAgent(files) {
+  if (!files || files.length === 0) {
+    return '';
+  }
+
+  let formatted = '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+  formatted += `📎 ATTACHED FILES (${files.length})\n`;
+  formatted += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+
+  files.forEach((file, index) => {
+    formatted += `\n[FILE ${index + 1}]\n`;
+    formatted += `File Name: ${file.fileName}\n`;
+    formatted += `Type: ${file.fileType}\n`;
+
+    if (file.textContent) {
+      formatted += `\nContent:\n${file.textContent}\n`;
+    } else {
+      formatted += `\n[Note: This is a ${file.category} file.]\n`;
+      formatted += `Download URL: ${file.downloadURL}\n`;
+    }
+
+    formatted += '\n=== END FILE ===\n';
+  });
+
+  formatted += '\nPlease use the information from these files in your analysis.\n';
+
+  return formatted;
+}
+
+/**
  * Get system prompt for agent type
  */
 function getSystemPrompt(agentType) {
@@ -362,7 +397,7 @@ exports.triggerWorkflow = functions.https.onCall(async (data, context) => {
     );
   }
 
-  const { workflowType, params, message } = data;
+  const { workflowType, params, message, files = [] } = data;
   const userId = context.auth.uid;
 
   console.log(`Triggering workflow for user ${userId}: ${workflowType}`);
@@ -378,7 +413,8 @@ exports.triggerWorkflow = functions.https.onCall(async (data, context) => {
       params: params,
       originalMessage: message,
       steps: data.steps,
-      documentTitle: data.documentTitle
+      documentTitle: data.documentTitle,
+      files: files // Store file metadata with job
     },
     progress: {
       currentStep: 0,

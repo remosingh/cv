@@ -5,6 +5,7 @@ import { performWebSearch, formatSearchResultsForAgent, isSearchAvailable } from
 import { detectWorkflowType, decomposeTask, createWorkflow, updateWorkflowStep, completeWorkflow } from './workflowService';
 import { createDocument } from './documentService';
 import { triggerBackgroundWorkflow } from './jobService';
+import { formatFilesForAgent } from './fileService';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -239,7 +240,7 @@ function generateAgentPosition(type) {
 }
 
 /**
- * Execute agent task with web search support
+ * Execute agent task with web search support and file context
  */
 export async function executeAgentTask(agent, message, context = {}) {
   try {
@@ -253,8 +254,16 @@ export async function executeAgentTask(agent, message, context = {}) {
 
     // Prepare the message with context if provided
     let enhancedMessage = message;
+
+    // Add file context if available
+    if (context.files && context.files.length > 0) {
+      const fileContext = formatFilesForAgent(context.files);
+      enhancedMessage = fileContext + '\n' + message;
+    }
+
+    // Add previous results context
     if (context.previousResults) {
-      enhancedMessage = `Context from previous steps:\n${JSON.stringify(context.previousResults, null, 2)}\n\nYour task:\n${message}`;
+      enhancedMessage = `Context from previous steps:\n${JSON.stringify(context.previousResults, null, 2)}\n\nYour task:\n${enhancedMessage}`;
     }
 
     // Get system prompt
@@ -384,9 +393,9 @@ export async function getOrCreateCoordinator(userId) {
 }
 
 /**
- * Enhanced coordination with workflow management
+ * Enhanced coordination with workflow management and file context
  */
-export async function coordinateTask(userId, message) {
+export async function coordinateTask(userId, message, files = []) {
   const coordinator = await getOrCreateCoordinator(userId);
 
   // Detect workflow type
@@ -395,24 +404,25 @@ export async function coordinateTask(userId, message) {
 
   // For complex workflows, execute in background via Cloud Functions
   if (workflowInfo.type === 'business-case' || workflowInfo.type === 'research') {
-    return await executeBackgroundWorkflow(userId, message, workflowInfo, coordinator);
+    return await executeBackgroundWorkflow(userId, message, workflowInfo, coordinator, files);
   }
 
-  // Simple coordination
-  const result = await executeAgentTask(coordinator, message);
+  // Simple coordination with file context
+  const result = await executeAgentTask(coordinator, message, { files });
 
   return {
     coordinatorResponse: result.response,
     searchResults: result.searchResults || [],
     spawnedAgents: [],
-    workflowType: 'simple'
+    workflowType: 'simple',
+    files
   };
 }
 
 /**
  * Execute workflow in background using Cloud Functions
  */
-async function executeBackgroundWorkflow(userId, message, workflowInfo, coordinator) {
+async function executeBackgroundWorkflow(userId, message, workflowInfo, coordinator, files = []) {
   const { type, params } = workflowInfo;
 
   // Decompose task into steps
@@ -427,8 +437,8 @@ async function executeBackgroundWorkflow(userId, message, workflowInfo, coordina
   }
 
   try {
-    // Trigger background workflow via Cloud Function
-    const jobInfo = await triggerBackgroundWorkflow(type, params, message, steps, documentTitle);
+    // Trigger background workflow via Cloud Function with file context
+    const jobInfo = await triggerBackgroundWorkflow(type, params, message, steps, documentTitle, files);
 
     const summary = `
 🚀 Started background workflow!
@@ -436,6 +446,7 @@ async function executeBackgroundWorkflow(userId, message, workflowInfo, coordina
 Your ${type} workflow has been queued with ${steps.length} steps:
 ${steps.map((s, i) => `  ${i + 1}. ${s.name}`).join('\n')}
 
+${files.length > 0 ? `📎 ${files.length} file(s) attached and will be available to all agents\n` : ''}
 📊 Job ID: ${jobInfo.jobId}
 ⏱️ Estimated time: ${jobInfo.estimatedTime}
 
@@ -459,9 +470,9 @@ The final document will be saved to your Documents tab when complete.
     console.warn('Cloud Functions not available, falling back to frontend execution');
 
     if (type === 'business-case') {
-      return await executeBusinessCaseWorkflowFrontend(userId, message, params, coordinator, steps);
+      return await executeBusinessCaseWorkflowFrontend(userId, message, params, coordinator, steps, files);
     } else if (type === 'research') {
-      return await executeResearchWorkflowFrontend(userId, message, coordinator, steps);
+      return await executeResearchWorkflowFrontend(userId, message, coordinator, steps, files);
     }
 
     throw error;
@@ -471,7 +482,7 @@ The final document will be saved to your Documents tab when complete.
 /**
  * Execute business case workflow (frontend fallback)
  */
-async function executeBusinessCaseWorkflowFrontend(userId, message, params, coordinator, steps) {
+async function executeBusinessCaseWorkflowFrontend(userId, message, params, coordinator, steps, files = []) {
   // Create workflow
   const workflow = await createWorkflow(userId, message, steps);
 
@@ -497,8 +508,9 @@ Starting now...`;
     const agent = await createAgent(userId, step.agentType, step.task);
     spawnedAgents.push(agent);
 
-    // Build context from previous steps
+    // Build context from previous steps and include files
     const context = {
+      files: files, // Make files available to all agents
       previousResults: step.dependsOn
         ? step.dependsOn.reduce((acc, depId) => {
             acc[depId] = stepResults[depId];
@@ -566,7 +578,7 @@ You can now download it and present it to investors!
 /**
  * Execute research workflow (frontend fallback)
  */
-async function executeResearchWorkflowFrontend(userId, message, coordinator, steps) {
+async function executeResearchWorkflowFrontend(userId, message, coordinator, steps, files = []) {
   const workflow = await createWorkflow(userId, message, steps);
 
   const spawnedAgents = [];
@@ -578,6 +590,7 @@ async function executeResearchWorkflowFrontend(userId, message, coordinator, ste
     spawnedAgents.push(agent);
 
     const context = {
+      files: files, // Make files available to all agents
       previousResults: step.dependsOn
         ? step.dependsOn.reduce((acc, depId) => {
             acc[depId] = stepResults[depId];

@@ -45,5 +45,12 @@ service cloud.firestore {
       allow read, write: if isAuthenticated() && isOwner(resource.data.userId);
       allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
     }
+
+    // Files collection
+    match /files/{fileId} {
+      // Users can read and write their own files
+      allow read, write: if isAuthenticated() && isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+    }
   }
 }

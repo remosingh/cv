@@ -15,9 +15,10 @@ const functions = getFunctions();
  * @param {string} message - Original user message
  * @param {Array} steps - Workflow steps
  * @param {string} documentTitle - Title for final document
+ * @param {Array} files - Attached files
  * @returns {Promise<Object>} - Job info
  */
-export async function triggerBackgroundWorkflow(workflowType, params, message, steps, documentTitle) {
+export async function triggerBackgroundWorkflow(workflowType, params, message, steps, documentTitle, files = []) {
   const triggerWorkflow = httpsCallable(functions, 'triggerWorkflow');
 
   try {
@@ -26,7 +27,15 @@ export async function triggerBackgroundWorkflow(workflowType, params, message, s
       params,
       message,
       steps,
-      documentTitle
+      documentTitle,
+      files: files.map(f => ({
+        fileId: f.fileId,
+        fileName: f.fileName,
+        fileType: f.fileType,
+        textContent: f.textContent,
+        downloadURL: f.downloadURL,
+        category: f.category
+      }))
     });
 
     return result.data;

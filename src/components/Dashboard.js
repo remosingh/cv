@@ -30,10 +30,11 @@ export default function Dashboard() {
     }
   }
 
-  async function handleSendTask(taskText) {
+  async function handleSendTask(taskText, files = []) {
     const userMessage = {
       role: 'user',
       content: taskText,
+      files: files,
       timestamp: Date.now()
     };
 
@@ -42,8 +43,8 @@ export default function Dashboard() {
 
     try {
       if (selectedAgent && selectedAgent.type !== 'coordinator') {
-        // Send to specific agent
-        const response = await executeAgentTask(selectedAgent, taskText);
+        // Send to specific agent with file context
+        const response = await executeAgentTask(selectedAgent, taskText, { files });
 
         const agentMessage = {
           role: 'assistant',
@@ -54,8 +55,8 @@ export default function Dashboard() {
 
         setMessages(prev => [...prev, agentMessage]);
       } else {
-        // Send to coordinator
-        const result = await coordinateTask(currentUser.uid, taskText);
+        // Send to coordinator with files
+        const result = await coordinateTask(currentUser.uid, taskText, files);
 
         const coordinatorMessage = {
           role: 'assistant',

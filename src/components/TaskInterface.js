@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import FileUpload from './FileUpload';
 import './TaskInterface.css';
 
 export default function TaskInterface({
@@ -7,7 +9,9 @@ export default function TaskInterface({
   loading,
   selectedAgent
 }) {
+  const { currentUser } = useAuth();
   const [input, setInput] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState([]);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -21,9 +25,14 @@ export default function TaskInterface({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (input.trim() && !loading) {
-      onSendTask(input);
+      onSendTask(input, attachedFiles);
       setInput('');
+      setAttachedFiles([]); // Clear attached files after sending
     }
+  };
+
+  const handleFilesChange = (files) => {
+    setAttachedFiles(files);
   };
 
   return (
@@ -89,17 +98,26 @@ export default function TaskInterface({
       </div>
 
       <form onSubmit={handleSubmit} className="input-form">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Enter your task or question..."
-          disabled={loading}
-          className="task-input"
-        />
-        <button type="submit" disabled={loading || !input.trim()} className="send-button">
-          Send
-        </button>
+        <div className="input-container">
+          <FileUpload
+            userId={currentUser?.uid}
+            onFilesUploaded={handleFilesChange}
+            existingFiles={attachedFiles}
+          />
+          <div className="input-row">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Enter your task or question..."
+              disabled={loading}
+              className="task-input"
+            />
+            <button type="submit" disabled={loading || !input.trim()} className="send-button">
+              Send
+            </button>
+          </div>
+        </div>
       </form>
     </div>
   );
