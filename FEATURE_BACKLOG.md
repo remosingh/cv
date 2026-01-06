@@ -45,6 +45,107 @@ Enable agents to compose, review, and send emails as part of workflow execution.
 
 ---
 
+### 1b. Email-to-Agent Interface (Inbound Email)
+**Category**: Communication & Universal Access
+**Priority**: High
+**Status**: Not Started
+
+**Description**:
+Users can send emails directly to their coordinator agent to trigger tasks, making Agentic City accessible from any email client without needing to open the app. Each user's coordinator agent gets a unique email address.
+
+**Email Address Format**:
+- `{agentname}@agenticcity.com` (e.g., remosagent@agenticcity.com)
+- Agent name chosen by user during setup
+- Unique per user, persists across sessions
+
+**Mind-Blowing Capabilities**:
+- Send task via email from anywhere (phone, laptop, tablet)
+- Email subject becomes task title
+- Email body contains task instructions
+- Email attachments automatically uploaded as task files
+- Reply to agent emails to continue conversation
+- Email threading maintains task context
+- Forward emails to agent ("handle this customer inquiry")
+- CC/BCC support for shared tasks
+- Rich text formatting preserved
+- Signature detection and removal
+- Mobile-first accessibility
+- Works with all email clients (Gmail, Outlook, Apple Mail, etc.)
+- No app installation required
+- Email receipts confirm task received
+- Auto-reply with task ID and tracking link
+
+**Incredible Use Cases**:
+- On mobile: email "redline all spelling mistakes in the contract" with PDF attached
+- Forward supplier quote: "analyze pricing and negotiate better terms"
+- From airport: "book a hotel in Tokyo for next week, budget $200/night"
+- Quick delegation: "research competitors for tomorrow's meeting"
+- Shared tasks: CC colleague, both get updates
+- Email chain: "now revise based on my feedback" in reply thread
+- Anywhere access: trigger complex workflows without opening app
+
+**Technical Magic**:
+- Inbound email server (SendGrid Inbound Parse, Mailgun Routes)
+- Email parsing and sanitization
+- Spam and authentication checks (SPF, DKIM, DMARC)
+- Attachment extraction and upload to file service
+- User authentication via email address mapping
+- Task creation via coordinateTask() with email context
+- Email threading tracking (In-Reply-To, References headers)
+- Auto-response generation
+- Rate limiting per user
+- Email bounces and error handling
+- Webhook processing in Firebase Functions
+- Queue for high-volume processing
+- Link to web dashboard in confirmation emails
+
+**Email Flow**:
+1. User sends email to remosagent@agenticcity.com
+2. Inbound email webhook triggered
+3. Verify sender is authenticated user
+4. Parse email (subject, body, attachments, thread)
+5. Extract task instructions and files
+6. Create task in Firestore with email metadata
+7. Trigger coordinator agent with task
+8. Send confirmation email with task ID and dashboard link
+9. Process task in background
+10. Email updates as workflow progresses
+11. Final email with results and document links
+
+**Security Considerations**:
+- Email address verification (only accept from user's registered email)
+- Anti-spam measures
+- Rate limiting (prevent abuse)
+- Attachment size limits
+- Virus scanning on attachments
+- Secure parsing (prevent injection attacks)
+- Email whitelist option
+- Two-factor via email confirmation for sensitive tasks
+
+**UX Enhancements**:
+- Email templates users can copy (with examples)
+- Smart parsing: "urgent" in subject → high priority
+- Time expressions: "by Friday" → deadline detection
+- Agent mentions: "use researcher and analyst agents"
+- Hashtags: #business-case triggers specific workflow
+- Quick commands: "status" replies with all active tasks
+- Help command: email "help" for usage guide
+
+**Integration Points**:
+- File service (for attachments)
+- Agent service (trigger coordinateTask)
+- Job service (for background workflows)
+- Notification system (send updates back via email)
+- Calendar agent (parse dates/times from email)
+- Document service (link to results)
+
+**Why It's Game-Changing**:
+Email is universal - everyone has it, everyone knows how to use it. This makes Agentic City accessible from anywhere, at any time, on any device. Users can trigger multi-agent workflows while waiting in line, walking the dog, or traveling internationally. No app, no login, just send an email. It transforms the platform from a web app into an ambient intelligence layer accessible via the world's most ubiquitous interface.
+
+**Dependencies**: File service, agent service, notification system
+
+---
+
 ### 2. Advanced Spreadsheet Agent
 **Category**: Data Processing & Analysis
 **Priority**: High
@@ -949,5 +1050,6 @@ Most people optimize their life by intuition, working on whatever feels urgent. 
 
 ## Change Log
 
+**2026-01-06**: Added Email-to-Agent Interface - trigger tasks by emailing your coordinator agent
 **2026-01-06**: Added 10 moonshot features - super creative, awe-inspiring capabilities
 **2026-01-06**: Initial backlog created with 10 high-impact features
