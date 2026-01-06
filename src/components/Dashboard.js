@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import CityView from './CityView';
 import TaskInterface from './TaskInterface';
 import DocumentViewer from './DocumentViewer';
+import JobMonitor from './JobMonitor';
 import { coordinateTask, getUserAgents, executeAgentTask } from '../services/agentService';
 import { createDocument } from '../services/documentService';
 import './Dashboard.css';
@@ -104,6 +105,23 @@ export default function Dashboard() {
     }
   }
 
+  function handleJobComplete(job) {
+    // Reload documents when a job completes
+    setDocumentRefreshKey(prev => prev + 1);
+
+    // Reload agents
+    loadAgents();
+
+    // Add completion message to chat
+    const completionMessage = {
+      role: 'assistant',
+      content: `✅ Background workflow completed!\n\n${job.workflow?.type || 'Task'} workflow finished successfully. Check the Documents tab for your final deliverable.`,
+      timestamp: Date.now()
+    };
+
+    setMessages(prev => [...prev, completionMessage]);
+  }
+
   return (
     <div className="dashboard">
       <header className="dashboard-header">
@@ -157,6 +175,8 @@ export default function Dashboard() {
           />
         </div>
       </div>
+
+      <JobMonitor onJobComplete={handleJobComplete} />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { sendMessageToClaude } from './claudeAPI';
 import { performWebSearch, formatSearchResultsForAgent, isSearchAvailable } from './searchService';
 import { detectWorkflowType, decomposeTask, createWorkflow, updateWorkflowStep, completeWorkflow } from './workflowService';
 import { createDocument } from './documentService';
+import { triggerBackgroundWorkflow } from './jobService';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -392,13 +393,9 @@ export async function coordinateTask(userId, message) {
   const workflowInfo = detectWorkflowType(message);
   console.log('Detected workflow:', workflowInfo);
 
-  // For complex workflows, execute multi-step process
-  if (workflowInfo.type === 'business-case') {
-    return await executeBusinessCaseWorkflow(userId, message, workflowInfo.params, coordinator);
-  }
-
-  if (workflowInfo.type === 'research') {
-    return await executeResearchWorkflow(userId, message, coordinator);
+  // For complex workflows, execute in background via Cloud Functions
+  if (workflowInfo.type === 'business-case' || workflowInfo.type === 'research') {
+    return await executeBackgroundWorkflow(userId, message, workflowInfo, coordinator);
   }
 
   // Simple coordination
@@ -413,11 +410,69 @@ export async function coordinateTask(userId, message) {
 }
 
 /**
- * Execute business case workflow
+ * Execute workflow in background using Cloud Functions
  */
-async function executeBusinessCaseWorkflow(userId, message, params, coordinator) {
+async function executeBackgroundWorkflow(userId, message, workflowInfo, coordinator) {
+  const { type, params } = workflowInfo;
+
+  // Decompose task into steps
+  const steps = decomposeTask(type, params);
+
+  // Determine document title
+  let documentTitle = 'Workflow Result';
+  if (type === 'business-case') {
+    documentTitle = `Business Case - ${params.industry || 'High Cash Flow Business'} in ${params.location || 'Edmonton'}`;
+  } else if (type === 'research') {
+    documentTitle = `Research Report - ${new Date().toLocaleDateString()}`;
+  }
+
+  try {
+    // Trigger background workflow via Cloud Function
+    const jobInfo = await triggerBackgroundWorkflow(type, params, message, steps, documentTitle);
+
+    const summary = `
+🚀 Started background workflow!
+
+Your ${type} workflow has been queued with ${steps.length} steps:
+${steps.map((s, i) => `  ${i + 1}. ${s.name}`).join('\n')}
+
+📊 Job ID: ${jobInfo.jobId}
+⏱️ Estimated time: ${jobInfo.estimatedTime}
+
+✨ You can close this tab - the workflow will continue in the background.
+You'll see progress in the job monitor (bottom right).
+The final document will be saved to your Documents tab when complete.
+`;
+
+    return {
+      coordinatorResponse: summary,
+      spawnedAgents: [],
+      workflowType: type,
+      backgroundJob: jobInfo,
+      isBackground: true
+    };
+
+  } catch (error) {
+    console.error('Failed to start background workflow:', error);
+
+    // Fallback to frontend execution if cloud functions not available
+    console.warn('Cloud Functions not available, falling back to frontend execution');
+
+    if (type === 'business-case') {
+      return await executeBusinessCaseWorkflowFrontend(userId, message, params, coordinator, steps);
+    } else if (type === 'research') {
+      return await executeResearchWorkflowFrontend(userId, message, coordinator, steps);
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * Execute business case workflow (frontend fallback)
+ */
+async function executeBusinessCaseWorkflowFrontend(userId, message, params, coordinator, steps) {
   // Create workflow
-  const steps = decomposeTask('business-case', params);
   const workflow = await createWorkflow(userId, message, steps);
 
   console.log(`Created business case workflow with ${steps.length} steps`);
@@ -509,10 +564,9 @@ You can now download it and present it to investors!
 }
 
 /**
- * Execute research workflow
+ * Execute research workflow (frontend fallback)
  */
-async function executeResearchWorkflow(userId, message, coordinator) {
-  const steps = decomposeTask('research', { task: message });
+async function executeResearchWorkflowFrontend(userId, message, coordinator, steps) {
   const workflow = await createWorkflow(userId, message, steps);
 
   const spawnedAgents = [];

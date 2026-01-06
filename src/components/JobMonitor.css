@@ -1,0 +1,270 @@
+.job-monitor {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+.job-monitor-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: white;
+  border: 2px solid #e1e8ed;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.job-monitor-toggle:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.job-monitor-toggle.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: transparent;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  }
+  50% {
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.6);
+  }
+}
+
+.job-icon {
+  font-size: 18px;
+}
+
+.job-count {
+  background: #ff6b6b;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.job-monitor-toggle.active .job-count {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.job-label {
+  font-size: 14px;
+}
+
+.job-monitor-panel {
+  position: absolute;
+  bottom: 60px;
+  right: 0;
+  width: 400px;
+  max-height: 600px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.job-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.job-panel-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.job-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.job-item {
+  background: #f9f9f9;
+  border: 2px solid #e1e8ed;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.job-item:hover {
+  border-color: #667eea;
+  transform: translateX(4px);
+}
+
+.job-item.selected {
+  border-color: #667eea;
+  background: #f0f4ff;
+}
+
+.job-item.running {
+  border-color: #4169E1;
+  background: #f0f8ff;
+}
+
+.job-item.completed {
+  border-color: #28a745;
+  background: #f0fff4;
+}
+
+.job-item.failed {
+  border-color: #dc3545;
+  background: #fff5f5;
+}
+
+.job-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.job-status-icon {
+  font-size: 18px;
+}
+
+.job-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+}
+
+.job-time {
+  font-size: 12px;
+  color: #999;
+}
+
+.job-progress {
+  margin-top: 8px;
+}
+
+.progress-bar-container {
+  height: 6px;
+  background: #e1e8ed;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: #666;
+}
+
+.job-details {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e1e8ed;
+  font-size: 13px;
+}
+
+.job-detail-row {
+  margin-bottom: 6px;
+  color: #666;
+}
+
+.job-detail-row strong {
+  color: #333;
+  margin-right: 8px;
+}
+
+.job-detail-row.error {
+  color: #dc3545;
+  padding: 8px;
+  background: #fff5f5;
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.job-steps {
+  margin-top: 12px;
+}
+
+.job-steps ul {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 0;
+}
+
+.job-steps li {
+  padding: 6px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.job-steps li.completed {
+  color: #28a745;
+}
+
+.job-steps li.failed {
+  color: #dc3545;
+}
+
+.step-icon {
+  font-size: 14px;
+}
+
+.job-panel-footer {
+  padding: 12px 20px;
+  background: #f9f9f9;
+  border-top: 1px solid #e1e8ed;
+  text-align: center;
+  font-size: 12px;
+  color: #999;
+}
+
+@media (max-width: 768px) {
+  .job-monitor-panel {
+    width: calc(100vw - 40px);
+    right: -10px;
+  }
+}

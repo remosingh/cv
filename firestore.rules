@@ -31,5 +31,19 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if isAuthenticated() && isOwner(userId);
     }
+
+    // Jobs collection (background workflows)
+    match /jobs/{jobId} {
+      // Users can create their own jobs
+      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+      // Users can read and update their own jobs
+      allow read, update: if isAuthenticated() && isOwner(resource.data.userId);
+    }
+
+    // Workflows collection
+    match /workflows/{workflowId} {
+      allow read, write: if isAuthenticated() && isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+    }
   }
 }
